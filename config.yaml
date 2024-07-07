@@ -8,6 +8,16 @@ data:
     # TODO: add remaining attacks
   ]
   seed: 42
+  use_rir: True
+  use_bg: True
+  use_lowpass: True
+
+  mixed_path: "/home/work/StripedMarlin/sohyun/combine_voice"
+  mixed_label_path: "/home/work/StripedMarlin/sohyun/combine_voice/combined_labels.csv"
+  noise_path: "/home/work/StripedMarlin/sohyun/vocal-remover/noises/*.wav"
+
+  sample_rate: 16_000
+  duration: 5
 
 checkpoint:
   # This part is used only in evaluation (each checkpoint is used in eval on corresponding fold).
@@ -18,9 +28,16 @@ model:
   name: "lcnn"
   parameters:
     input_channels: 1
-    frontend_algorithm: ["lfcc"]
+    frontend_algorithm: ["mfcc"]
+    output_dim: 2
   optimizer:
     lr: 0.0001
+  loss:
+    # name: "focal"
+    name: "bce"
+    fake_weight: 0.5
+    alpha: 0.8
+    use_reg: False
 
 logging:
   log_metrics: True
