@@ -362,7 +362,7 @@ if __name__ == "__main__":
         "nb_fc_node": 1024,
         "gru_node": 1024,
         "nb_gru_layer": 3,
-        "nb_classes": 1,
+        "nb_classes": 2,
     }
     device = "cpu"
     from copy import deepcopy

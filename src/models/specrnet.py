@@ -26,7 +26,7 @@ def get_config(input_channels: int) -> Dict:
         "nb_fc_node": 64,
         "gru_node": 64,
         "nb_gru_layer": 2,
-        "nb_classes": 1,
+        "nb_classes": 2,
     }
 
 class Residual_block2D(nn.Module):

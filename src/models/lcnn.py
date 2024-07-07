@@ -106,13 +106,14 @@ class BaseLCNN(torch_nn.Module):
         super().__init__()
         input_channels = kwargs.get("input_channels", 1)
         num_coefficients = kwargs.get("num_coefficients", 80)
+        output_shape = kwargs.get("output_dim", 1)
 
         # Working sampling rate
         self.num_coefficients = num_coefficients
 
         # dimension of embedding vectors
         # here, the embedding is just the activation before sigmoid()
-        self.v_emd_dim = 1
+        self.v_emd_dim = output_shape
 
         # it can handle models with multiple front-end configuration
         # by default, only a single front-end

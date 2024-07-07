@@ -12,7 +12,8 @@ class RawNet3(nn.Module):
     def __init__(self, block, model_scale, context, summed, C=1024, **kwargs):
         super().__init__()
 
-        nOut = kwargs["nOut"]
+        # nOut = kwargs["nOut"]
+        nOut = 2
 
         self.context = context
         self.encoder_type = kwargs["encoder_type"]
