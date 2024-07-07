@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.datasets.base_dataset import SimpleAudioFakeDataset
+import os
 
 DF_ASVSPOOF_SPLIT = {
     "partition_ratio": [0.7, 0.15],
@@ -12,11 +13,8 @@ DF_ASVSPOOF_SPLIT = {
 
 LOGGER = logging.getLogger()
 
-class DeepFakeASVSpoofDataset(SimpleAudioFakeDataset):
-
-    protocol_file_name = "keys/CM/trial_metadata.txt"
-    subset_dir_prefix = "ASVspoof2021_DF_eval"
-    subset_parts = ("part00", "part01", "part02", "part03")
+class KoreanKaggleDataset(SimpleAudioFakeDataset):
+    subset_parts = ("1", "2", "3", "4")
 
     def __init__(self, path, subset="train", transform=None):
         super().__init__(subset, transform)
@@ -34,13 +32,12 @@ class DeepFakeASVSpoofDataset(SimpleAudioFakeDataset):
 
     def get_file_references(self):
         flac_paths = {}
-        # for part in self.subset_parts:
-            # path = Path(self.path) / f"{self.subset_dir_prefix}_{part}" / self.subset_dir_prefix / "flac"
-        path = Path(self.path) / "flac"
-        flac_list = list(path.glob("*.flac"))
+        for part in self.subset_parts:
+            path = Path(self.path) / part
+            flac_list = list(path.glob("*.wav"))
 
-        for path in flac_list:
-            flac_paths[path.stem] = path
+            for path in flac_list:
+                flac_paths[path.stem] = path
 
         return flac_paths
 
@@ -53,29 +50,25 @@ class DeepFakeASVSpoofDataset(SimpleAudioFakeDataset):
 
         real_samples = []
         fake_samples = []
-        # with open(Path(self.path) / self.protocol_file_name, "r") as file:
-        key_path = "/home/work/StripedMarlin/sohyun/daadv_keys/keys/CM/trial_metadata.txt"
-        with open(key_path, "r") as file:
-            for line in file:
-                label = line.strip().split(" ")[5]
 
-                if label == "bonafide":
-                    real_samples.append(line)
-                elif label == "spoof":
-                    fake_samples.append(line)
+        for path in self.flac_paths:
+            # For KoreanKaggle , all is fake
+            fake_samples.append(path)
 
         fake_samples = self.split_samples(fake_samples)
-        for line in fake_samples:
-            samples = self.add_line_to_samples(samples, line)
+        for path in fake_samples:
+            samples = self.add_sample(samples, path)
 
-        real_samples = self.split_samples(real_samples)
-        for line in real_samples:
-            samples = self.add_line_to_samples(samples, line)
+        # real_samples = self.split_samples(real_samples)
+        # for line in real_samples:
+        #     samples = self.add_line_to_samples(samples, line)
 
         return pd.DataFrame(samples)
 
-    def add_line_to_samples(self, samples, line):
-        _, sample_name, _, _, _, label, _, _ = line.strip().split(" ")
+    def add_sample(self, samples, path):
+        sample_name = os.path.basename(path)
+        label = "spoof"
+
         samples["sample_name"].append(sample_name)
         samples["label"].append(label)
 
@@ -88,14 +81,14 @@ class DeepFakeASVSpoofDataset(SimpleAudioFakeDataset):
 
 
 if __name__ == "__main__":
-    ASVSPOOF_DATASET_PATH = "/home/adminuser/storage/datasets/deep_fakes/ASVspoof2021/DF"
+    KOREANKAGGLE_DATASET_PATH = "/home/work/StripedMarlin/kaggle-dataset/kss"
 
     real = 0
     fake = 0
     datasets = []
 
     for subset in ['train', 'test', 'val']:
-        dataset = DeepFakeASVSpoofDataset(ASVSPOOF_DATASET_PATH, subset=subset)
+        dataset = KoreanKaggleDataset(KOREANKAGGLE_DATASET_PATH, subset=subset)
 
         real_samples = dataset.samples[dataset.samples['label'] == 'bonafide']
         real += len(real_samples)

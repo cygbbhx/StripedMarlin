@@ -191,9 +191,11 @@ def main(args):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    ASVSPOOF_DATASET_PATH = "/home/adminuser/storage/datasets/deep_fakes/ASVspoof2021/DF"
-    WAVEFAKE_DATASET_PATH = "/home/adminuser/storage/datasets/deep_fakes/WaveFake"
-    FAKEAVCELEB_DATASET_PATH = "/home/adminuser/storage/datasets/deep_fakes/FakeAVCeleb/FakeAVCeleb_v1.2"
+    ASVSPOOF_DATASET_PATH = "/home/work/StripedMarlin/ASVspoof2021/ASVspoof2021_DF_eval/flac"
+    WAVEFAKE_DATASET_PATH = None
+    # WAVEFAKE_DATASET_PATH = "/home/adminuser/storage/datasets/deep_fakes/WaveFake"
+    FAKEAVCELEB_DATASET_PATH = None
+    # FAKEAVCELEB_DATASET_PATH = "/home/adminuser/storage/datasets/deep_fakes/FakeAVCeleb/FakeAVCeleb_v1.2"
 
     parser.add_argument(
         "--asv_path",
