@@ -7,6 +7,8 @@ from src.datasets.base_dataset import SimpleAudioFakeDataset
 from src.datasets.deepfake_asvspoof_dataset import DeepFakeASVSpoofDataset
 from src.datasets.fakeavceleb_dataset import FakeAVCelebDataset
 from src.datasets.wavefake_dataset import WaveFakeDataset
+from src.datasets.korean_dataset import KoreanKaggleDataset
+from src.datasets.custom_dataset import CustomDataset
 
 
 LOGGER = logging.getLogger()
@@ -19,6 +21,7 @@ class DetectionDataset(SimpleAudioFakeDataset):
         asvspoof_path=None,
         wavefake_path=None,
         fakeavceleb_path=None,
+        custom_path=None,
         subset: str = "val",
         transform=None,
         oversample: bool = True,
@@ -39,6 +42,7 @@ class DetectionDataset(SimpleAudioFakeDataset):
             asvspoof_path=asvspoof_path,
             wavefake_path=wavefake_path,
             fakeavceleb_path=fakeavceleb_path,
+            custom_path=custom_path,
             subset=subset,
         )
         self.samples = pd.concat(
@@ -63,21 +67,30 @@ class DetectionDataset(SimpleAudioFakeDataset):
         asvspoof_path: Optional[str],
         wavefake_path: Optional[str],
         fakeavceleb_path: Optional[str],
+        custom_path: Optional[str],
         subset: str,
     ) -> List[SimpleAudioFakeDataset]:
         datasets = []
 
-        if asvspoof_path is not None:
-            asvspoof_dataset = DeepFakeASVSpoofDataset(asvspoof_path, subset=subset)
-            datasets.append(asvspoof_dataset)
+        # if asvspoof_path is not None:
+        #     asvspoof_dataset = DeepFakeASVSpoofDataset(asvspoof_path, subset=subset)
+        #     datasets.append(asvspoof_dataset)
 
-        if wavefake_path is not None:
-            wavefake_dataset = WaveFakeDataset(wavefake_path, subset=subset)
-            datasets.append(wavefake_dataset)
+        # if wavefake_path is not None:
+        #     wavefake_dataset = WaveFakeDataset(wavefake_path, subset=subset)
+        #     datasets.append(wavefake_dataset)
 
-        if fakeavceleb_path is not None:
-            fakeavceleb_dataset = FakeAVCelebDataset(fakeavceleb_path, subset=subset)
-            datasets.append(fakeavceleb_dataset)
+        # if fakeavceleb_path is not None:
+        #     fakeavceleb_dataset = FakeAVCelebDataset(fakeavceleb_path, subset=subset)
+        #     datasets.append(fakeavceleb_dataset)
+
+        # if koreankaggle_path is not None:
+        #     koreankaggle_dataset = KoreanKaggleDataset(koreankaggle_path, subset=subset)
+        #     datasets.append(koreankaggle_dataset)
+            
+        if custom_path is not None:
+            custom_dataset = CustomDataset(custom_path, subset=subset)
+            datasets.append(custom_dataset)
 
         return datasets
 
@@ -95,6 +108,13 @@ class DetectionDataset(SimpleAudioFakeDataset):
         if diff_length > 0:
             bonafide = samples.get_group("bonafide").sample(diff_length, replace=True)
             self.samples = pd.concat([self.samples, bonafide], ignore_index=True)
+
+        mixed_length = len(samples.groups["both"])
+        diff_length = bona_length - mixed_length
+
+        if diff_length > 0:
+            mixed = samples.get_group("both").sample(diff_length, replace=True)
+            self.samples = pd.concat([self.samples, mixed], ignore_index=True)
 
     def undersample_dataset(self):
         samples = self.samples.groupby(by=['label'])

@@ -19,12 +19,12 @@ from src.utils import find_wav_files
 LOGGER = logging.getLogger(__name__)
 
 WAVE_FAKE_INTERFACE = True
-WAVE_FAKE_SR = 16_000
+# WAVE_FAKE_SR = 16_000
 WAVE_FAKE_TRIM = True
 WAVE_FAKE_NORMALIZE = True
 WAVE_FAKE_CELL_PHONE = False
 WAVE_FAKE_PAD = True
-WAVE_FAKE_CUT = 64_600
+# WAVE_FAKE_CUT = 64_600
 
 SOX_SILENCE = [
     # trim all silence that is longer than 0.2s and louder than 1% volume (relative to the file)
@@ -217,6 +217,7 @@ class AudioDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         directory_or_path_list: Union[Union[str, Path], List[Union[str, Path]]],
+        # sample_rate: int = 32_000,
         sample_rate: int = 16_000,
         amount: Optional[int] = None,
         normalize: bool = True,
