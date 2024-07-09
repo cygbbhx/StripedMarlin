@@ -131,14 +131,14 @@ class GDTrainer(Trainer):
             shuffle=True,
             drop_last=True,
             num_workers=6,
+        )
+        
         loss_map = {
             "bce": torch.nn.BCEWithLogitsLoss(),
             "focal": torchvision.ops.sigmoid_focal_loss
         }
-        )
+        
         criterion = loss_map[loss_config["name"]]
-
-        criterion = torch.nn.BCEWithLogitsLoss()
         optim = self.optimizer_fn(model.parameters(), **self.optimizer_kwargs)
 
         best_model = None
@@ -156,6 +156,8 @@ class GDTrainer(Trainer):
                 T_mult=1,
                 eta_min=5e-6,
                 # verbose=True,
+            )
+            
         use_reg = loss_config.get("use_reg", False)
 
         if use_reg:
@@ -167,8 +169,7 @@ class GDTrainer(Trainer):
 
             l1_regularization *= lambda_l1
             l1_regularization = l1_regularization.detach()
-
-            )
+            
         use_cuda = self.device != "cpu"
 
         for epoch in range(self.epochs):
@@ -190,7 +191,7 @@ class GDTrainer(Trainer):
                 batch_y = torch.stack(batch_y, dim=1).type(torch.float32).to(self.device)
 
                 batch_out, batch_loss = forward_and_loss_fn(model, criterion, batch_x, batch_y, use_cuda=use_cuda, loss_config=loss_config)
-
+                batch_pred = (torch.sigmoid(batch_out) + .5).int()
                 num_correct += torch.all(batch_pred == batch_y, dim=1).sum().item()
 
                 if use_reg:
@@ -201,35 +202,34 @@ class GDTrainer(Trainer):
                     count = torch.sum(combined_condition).item()
                     ratio = count / batch_size
                     batch_loss += ratio * l1_regularization
-                batch_pred = (torch.sigmoid(batch_out) + .5).int()
-                num_correct += (batch_pred == batch_y.int()).sum(dim=0).item()
 
                 y_train_pred = torch.cat((y_train_pred, torch.sigmoid(batch_out)), 0)
                 y_train_true = torch.cat((y_train_true, batch_y), 0)
                 running_loss += (batch_loss.item() * batch_size)
 
-                    train_loss = running_loss / num_total
-                    train_acc = num_correct/num_total*100
-                    train_auc, train_brier, train_ece, train_combined = get_metric(y_train_true, y_train_pred)
+                train_loss = running_loss / num_total
+                train_acc = num_correct/num_total*100
+                train_auc, train_brier, train_ece, train_combined = get_metric(y_train_true, y_train_pred)
 
-                         f"[{epoch:04d}][{i:05d}]: {train_loss} {train_acc} | {train_combined} (AUC: {train_auc} BRI: {train_brier} ECE: {train_ece})")
-                        
-                    if self.wandb:
-                        wandb.log({"step_loss": train_loss, "step_acc": train_acc,
-                                    "step_auc": train_auc, "step_brier": train_brier, "step_ece": train_ece, "step_combined":train_combined})
-                    LOGGER.info(
-                         f"[{epoch:04d}][{i:05d}]: {running_loss / num_total} {num_correct/num_total*100}")
+                LOGGER.info(f"[{epoch:04d}][{i:05d}]: {train_loss} {train_acc} | {train_combined} (AUC: {train_auc} BRI: {train_brier} ECE: {train_ece})")
+                    
+                if self.wandb:
+                    wandb.log({"step_loss": train_loss, "step_acc": train_acc,
+                                "step_auc": train_auc, "step_brier": train_brier, "step_ece": train_ece, "step_combined":train_combined})
+                LOGGER.info(
+                        f"[{epoch:04d}][{i:05d}]: {running_loss / num_total} {num_correct/num_total*100}")
 
                 optim.zero_grad()
                 batch_loss.backward()
                 optim.step()
-                    
+                if self.use_scheduler:
                     scheduler.step()
 
             if self.wandb:
                 train_auc, train_brier, train_ece, train_combined = get_metric(y_train_true, y_train_pred)
                 wandb.log({"epoch": epoch, "train_loss": running_loss, "train_acc": train_accuracy,
                            "train_auc": train_auc, "train_brier": train_brier, "train_ece": train_ece, "train_combined": train_combined})
+                
             running_loss /= num_total
             train_accuracy = (num_correct / num_total) * 100
 
@@ -241,17 +241,15 @@ class GDTrainer(Trainer):
             y_test_true = torch.tensor([]).cuda().to(dtype=torch.float64)
             y_test_pred = torch.tensor([]).cuda().to(dtype=torch.float64)
             model.eval()
-            eer_val = 0
-
+            
             for batch_x, _, batch_y in test_loader:
                 batch_size = batch_x.size(0)
                 num_total += batch_size
                 batch_x = batch_x.to(self.device)
 
                 with torch.no_grad():
-                # batch_y = batch_y.unsqueeze(1).type(torch.float32).to(self.device)
+                    batch_pred = model(batch_x)
                 batch_y = torch.stack(batch_y, dim=1).type(torch.float32).to(self.device)
-                # batch_loss = criterion(batch_pred, batch_y)
 
                 fake_weight = loss_config["fake_weight"]
                 loss_name = loss_config["name"]
@@ -266,39 +264,43 @@ class GDTrainer(Trainer):
                     real_loss = criterion(batch_out[:,1], batch_y[:,1])
                 
                 batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
-
                 test_running_loss += (batch_loss.item() * batch_size)
-
-                # num_correct += (batch_pred_label == batch_y.int()).sum(dim=0).item()
+                
+                batch_pred = torch.sigmoid(batch_pred)
+                batch_pred_label = (batch_pred + .5).int()
                 num_correct += torch.all(batch_pred_label == batch_y, dim=1).sum().item()
                 
                 y_test_true = torch.cat((y_test_true, batch_y), 0)
-                y_test_pred = torch.cat((y_test_pred, batch_pred), 0)
+                y_test_pred = torch.cat((y_test_pred, torch.sigmoid(batch_pred)), 0)
             
-            test_auc, test_brier, test_ece, test_combined = get_metric(y_test_true, y_test_pred)
-                batch_pred_label = (batch_pred + .5).int()
-                num_correct += (batch_pred_label == batch_y.int()).sum(dim=0).item()
+                test_auc, test_brier, test_ece, test_combined = get_metric(y_test_true, y_test_pred)
 
             if num_total == 0:
                 num_total = 1
 
             test_running_loss /= num_total
+            test_acc = 100 * (num_correct / num_total)
+            
+            LOGGER.info(
                 f"Epoch [{epoch+1}/{self.epochs}]:\n"
                 f"    test/loss: {test_running_loss}, test/accuracy: {test_acc},\n"
-                f"test/accuracy: {test_acc}, "
+                f"    test/accuracy: {test_acc}, "
+            )
+            
             if self.wandb:
                 wandb.log({"epoch": epoch, "test_loss": test_running_loss, "test_acc": test_acc,
                            "test_auc": test_auc, "test_brier": test_brier, "test_ece": test_ece, "test_combined": test_combined})
-                best_acc = test_acc
-                best_model = deepcopy(model.state_dict())
+                
+            LOGGER.info(
                 f"Epoch [{epoch:04d}]:\n"
                 f"      loss: {running_loss}, train acc: {train_accuracy}, test_acc: {test_acc},\n"
                 f"      train_combined: {train_combined} (AUC: {train_auc} BRI: {train_brier} ECE: {train_ece}),"
-                f"      test_combined: {test_combined} (AUC: {test_auc} BRI: {test_brier} ECE: {test_ece})")
-            test_acc = self.multi_f1_score(test_acc_results)
-            LOGGER.info(f"[{epoch:04d}]: multi_f1_score: {test_acc}")
+                f"      test_combined: {test_combined} (AUC: {test_auc} BRI: {test_brier} ECE: {test_ece})"
+            )
 
             if best_model is None or test_acc > best_acc:
+                best_acc = test_acc
+                best_model = deepcopy(model.state_dict())
                 train_acc_fm = str(train_accuracy).replace('.', '')[:4].zfill(4)
                 test_acc_fm  = str(test_acc).replace('.', '')[:4].zfill(4)
                 ckpt_name = f"{epoch:04d}_tr{train_acc_fm}_ts{test_acc_fm}"
@@ -307,12 +309,12 @@ class GDTrainer(Trainer):
                 save_model(
                     model=model,
                     epoch=epoch,
-                    ckpt_name=ckpt_name
+                    ckpt_name=ckpt_name,
                     name=save_model_name,
-        
-        if self.wandb:
-            wandb.log({"best_test_acc": best_acc})
                 )
+        
+            if self.wandb:
+                wandb.log({"best_test_acc": best_acc})
 
         model.load_state_dict(best_model)
         return model
