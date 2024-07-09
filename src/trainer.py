@@ -251,9 +251,21 @@ class GDTrainer(Trainer):
                 with torch.no_grad():
                 # batch_y = batch_y.unsqueeze(1).type(torch.float32).to(self.device)
                 batch_y = torch.stack(batch_y, dim=1).type(torch.float32).to(self.device)
+                # batch_loss = criterion(batch_pred, batch_y)
 
-                batch_y = batch_y.unsqueeze(1).type(torch.float32).to(self.device)
-                batch_loss = criterion(batch_pred, batch_y)
+                fake_weight = loss_config["fake_weight"]
+                loss_name = loss_config["name"]
+
+                if loss_name == "focal":
+                    alpha_val = loss_config.get("alpha", 0.25)
+                    reduction = loss_config.get("reduction", "mean")
+                    fake_loss = criterion(batch_out[:,0], batch_y[:,0], alpha=alpha_val, reduction=reduction)
+                    real_loss = criterion(batch_out[:,1], batch_y[:,1], alpha=alpha_val, reduction=reduction)
+                elif loss_name == "bce":
+                    fake_loss = criterion(batch_out[:,0], batch_y[:,0])
+                    real_loss = criterion(batch_out[:,1], batch_y[:,1])
+                
+                batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
 
                 test_running_loss += (batch_loss.item() * batch_size)
 
