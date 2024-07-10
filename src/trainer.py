@@ -214,9 +214,9 @@ class GDTrainer(Trainer):
 
                     LOGGER.info(f"[{epoch:04d}][{i:05d}]: {train_loss} {train_acc} | {train_combined} (AUC: {train_auc} BRI: {train_brier} ECE: {train_ece})")
                     
-                    if self.wandb:
-                        wandb.log({"step_loss": train_loss, "step_acc": train_acc,
-                                    "step_auc": train_auc, "step_brier": train_brier, "step_ece": train_ece, "step_combined":train_combined})
+                if self.wandb:
+                    wandb.log({"step_loss": train_loss, "step_acc": train_acc,
+                                "step_auc": train_auc, "step_brier": train_brier, "step_ece": train_ece, "step_combined":train_combined})
 
                 optim.zero_grad()
                 batch_loss.backward()

@@ -98,12 +98,12 @@ class CustomDataset(SimpleAudioFakeDataset):
         cluster2_real = pd.DataFrame(cluster2.groupby('label').groups['real'])
         cluster2_fake = pd.DataFrame(cluster2.groupby('label').groups['fake'])
         
-        real_sr = int(len(cluster2_real) * 0.05)
-        fake_sr = int(len(cluster2_real) * 0.1)
+        real_sr = int(len(cluster2_real) * 0.1)
+        # fake_sr = int(len(cluster2_real) * 0.1)
         us_real = cluster2_real.sample(n=real_sr, random_state=42)
-        us_fake = cluster2_fake.sample(n=fake_sr, random_state=42)
+        # us_fake = cluster2_fake.sample(n=fake_sr, random_state=42)
     
-        combined_df = pd.concat([cluster0, us_real, us_fake])
+        combined_df = pd.concat([cluster0, us_real, cluster2_fake])
         combined_df['cluster'] = combined_df['cluster'].replace(2, 1)
         
         final_df = pd.concat([combined_df, cluster1])
