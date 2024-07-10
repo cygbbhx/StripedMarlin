@@ -350,10 +350,15 @@ class PadDataset(torch.utils.data.Dataset):
             return waveform[:cut]
 
         # need to pad
-        num_repeats = int(cut / waveform_len) + 1
-        padded_waveform = torch.tile(waveform, (1, num_repeats))[:, :cut][0]
+        # num_repeats = int(cut / waveform_len) + 1
+        # padded_waveform = torch.tile(waveform, (1, num_repeats))[:, :cut][0]
+
+        # need to pad
+        padded_waveform = torch.zeros(cut)
+        start_idx = torch.randint(0, cut - waveform_len + 1, (1,)).item()
+        padded_waveform[start_idx:start_idx + waveform_len] = waveform
 
         return padded_waveform
-
+        
     def __len__(self):
         return len(self.dataset)
