@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from src.aa import utils
 from src.aa.aa_types import AttackEnum
 from src.loss import CombinedBrierFocalLoss
+from src.sam import SAM
 import wandb
 from eval_utils import get_metric
 import torchvision
@@ -131,10 +132,15 @@ class GDTrainer(Trainer):
         }
         
         criterion = loss_map[loss_config["name"]]
+
         optim = self.optimizer_fn(model.parameters(), **self.optimizer_kwargs)
+        if loss_config.get('sam', False):
+            optim = SAM(model.parameters(), self.optimizer_fn, lr=self.optimizer_kwargs['lr'],
+                        weight_decay=float(loss_config['weight_decay']))
 
         best_model = None
         best_acc = 0
+        best_score = 1.0
 
         LOGGER.info(f"Starting training for {self.epochs} epochs!")
 
@@ -191,9 +197,16 @@ class GDTrainer(Trainer):
                     wandb.log({"step_loss": train_loss, "step_acc": train_acc,
                                 "step_auc": train_auc, "step_brier": train_brier, "step_ece": train_ece, "step_combined":train_combined})
 
-                optim.zero_grad()
-                batch_loss.backward()
-                optim.step()
+                if loss_config.get('sam', False):
+                    batch_loss.backward()
+                    optim.first_step(zero_grad=True)
+                    criterion(torch.sigmoid(model(batch_x)), batch_y).backward()
+                    optim.second_step(zero_grad=True)
+                else:
+                    optim.zero_grad()
+                    batch_loss.backward()
+                    optim.step()
+
                 if self.use_scheduler:
                     scheduler.step()
 
@@ -238,7 +251,7 @@ class GDTrainer(Trainer):
                 y_test_true = torch.cat((y_test_true, batch_y), 0)
                 y_test_pred = torch.cat((y_test_pred, batch_out), 0)
             
-                test_auc, test_brier, test_ece, test_combined = get_metric(y_test_true, y_test_pred)
+            test_auc, test_brier, test_ece, test_combined = get_metric(y_test_true, y_test_pred)
 
             if num_total == 0:
                 num_total = 1
@@ -263,12 +276,19 @@ class GDTrainer(Trainer):
                 f"      test_combined: {test_combined} (AUC: {test_auc} BRI: {test_brier} ECE: {test_ece})"
             )
 
-            if best_model is None or test_acc > best_acc:
-                best_acc = test_acc
+            if best_model is None or best_score > test_combined:
+                best_score = test_combined
                 best_model = deepcopy(model.state_dict())
-                train_acc_fm = str(train_accuracy).replace('.', '')[:4].zfill(4)
-                test_acc_fm  = str(test_acc).replace('.', '')[:4].zfill(4)
+                train_acc_fm = str(train_combined).replace('.', '')[:4].zfill(4)
+                test_acc_fm  = str(test_combined).replace('.', '')[:4].zfill(4)
                 ckpt_name = f"{epoch:04d}_tr{train_acc_fm}_ts{test_acc_fm}"
+
+            # if best_model is None or test_acc > best_acc:
+            #     best_acc = test_acc
+            #     best_model = deepcopy(model.state_dict())
+            #     train_acc_fm = str(train_accuracy).replace('.', '')[:4].zfill(4)
+            #     test_acc_fm  = str(test_acc).replace('.', '')[:4].zfill(4)
+            #     ckpt_name = f"{epoch:04d}_tr{train_acc_fm}_ts{test_acc_fm}"
 
             if model_dir is not None:
                 save_model(
