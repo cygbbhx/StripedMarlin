@@ -36,11 +36,9 @@ class CustomDataset(SimpleAudioFakeDataset):
         ):
         super().__init__(subset, transform)
         self.path = path
-        self.anno_data = pd.read_csv(os.path.join(self.path, f'train.csv'))
         self.data_config = data_config
+        self.anno_data = pd.read_csv(os.path.join(self.path, f'train_w_cl.csv'))
 
-        self.new_path = data_config["mixed_path"]
-        self.new_data = pd.read_csv(data_config["mixed_label_path"])
         self.noise_files = glob.glob(data_config["noise_path"])
         self.sample_rate = data_config["sample_rate"]
         self.duration = data_config["duration"] * self.sample_rate + 500 
@@ -48,6 +46,7 @@ class CustomDataset(SimpleAudioFakeDataset):
         self.partition_ratio = DF_ASVSPOOF_SPLIT["partition_ratio"]
         self.seed = DF_ASVSPOOF_SPLIT["seed"]
 
+        self.anno_data = self.cluster_based_sampling()
         self.flac_paths = self.get_file_references()
         self.samples = self.read_protocol()
 
@@ -85,31 +84,48 @@ class CustomDataset(SimpleAudioFakeDataset):
     def get_file_references(self):
         flac_paths = {}
         flac_paths.update(dict(zip(self.anno_data['id'], self.path + '/' + self.anno_data['path'])))
-        flac_paths.update(dict(zip(self.new_data['id'], self.new_path + '/' + self.new_data['path'])))
         noise_filenames = [os.path.splitext(os.path.basename(file))[0] for file in self.noise_files]
         flac_paths.update(dict(zip(noise_filenames, self.noise_files)))
 
         return flac_paths
+    
+    def cluster_based_sampling(self):
+        clusters = self.anno_data.groupby('cluster')
+        cluster0 = clusters.get_group(0)
+        cluster1 = clusters.get_group(1)
+        cluster2 = clusters.get_group(2)
+        
+        cluster2_real = pd.DataFrame(cluster2.groupby('label').groups['real'])
+        cluster2_fake = pd.DataFrame(cluster2.groupby('label').groups['fake'])
+        
+        real_sr = int(len(cluster2_real) * 0.05)
+        fake_sr = int(len(cluster2_real) * 0.1)
+        us_real = cluster2_real.sample(n=real_sr, random_state=42)
+        us_fake = cluster2_fake.sample(n=fake_sr, random_state=42)
+    
+        combined_df = pd.concat([cluster0, us_real, us_fake])
+        combined_df['cluster'] = combined_df['cluster'].replace(2, 1)
+        
+        final_df = pd.concat([combined_df, cluster1])
+        
+        return final_df.drop(columns=['cluster',0])
 
     def read_protocol(self):
         samples = {
             "sample_name": [],
             "label": [],
-            "path": []
+            "path": [],
+            # "cluster": []
         }
 
         real_samples = []
         fake_samples = []
-        mixed_samples = []
         noise_samples = []
 
         real_samples.extend((self.path + '/' + self.anno_data.loc[self.anno_data['label'] == 'real', 'path']).tolist())
         fake_samples.extend((self.path + '/' + self.anno_data.loc[self.anno_data['label'] == 'fake', 'path']).tolist())
 
         # Handle new_data
-        real_samples.extend((self.new_path + '/' + self.new_data.loc[self.new_data['label'] == 'real', 'path']).tolist())
-        fake_samples.extend((self.new_path + '/' + self.new_data.loc[self.new_data['label'] == 'fake', 'path']).tolist())
-        mixed_samples.extend((self.new_path + '/' + self.new_data.loc[self.new_data['label'] == 'both', 'path']).tolist())
         noise_samples.extend(self.noise_files)
 
         fake_samples = self.split_samples(fake_samples)
@@ -120,9 +136,6 @@ class CustomDataset(SimpleAudioFakeDataset):
         for path in real_samples:
             samples = self.add_sample(samples, path, label="bonafide")
 
-        mixed_samples = self.split_samples(mixed_samples)
-        for path in mixed_samples:
-            samples = self.add_sample(samples, path, label="both")
 
         noise_samples = self.split_samples(noise_samples)
         for path in noise_samples:
@@ -138,7 +151,6 @@ class CustomDataset(SimpleAudioFakeDataset):
 
         sample_path = self.flac_paths[sample_name]
         samples["path"].append(sample_path)
-        samples["attack_type"] = "N/A"
 
         return samples
 
@@ -151,9 +163,24 @@ class CustomDataset(SimpleAudioFakeDataset):
 
         if label != "noise":
             p = np.random.rand()
+            if np.random.rand() < 0.5:
+                mix_sample = self.samples.sample(1).iloc[0]
+                mix_sample_path = str(mix_sample['path'])
+                target_waveform, sample_rate = torchaudio.load(mix_sample_path)
+                target_label = mix_sample['label']
+                
+                if target_label == "bonafide" and label == "bonafide":
+                    label = "bonafide"
+                elif  target_label == "spoof" and label == "spoof":
+                    label = "spoof"
+                else:
+                    label = "both"
+                    
+                waveform = self.mix_voice(waveform, target_waveform)
+            
             if p < 0.3 and self.use_lowpass:
                 waveform = self.lowpass_filter(waveform, sample_rate)
-            if p < 0.9:
+            if p < 0.8:
                 waveform = self.add_random_noise(waveform)
         
         # normalize and resampling is done below code               
@@ -200,6 +227,24 @@ class CustomDataset(SimpleAudioFakeDataset):
         noisy_speeches = F.add_noise(speech_waveform[:, :end], noise_waveform, snr_dbs) # TODO: modify to random position
 
         return noisy_speeches
+    
+    def mix_voice(self, waveform, target_waveform):        
+        end = min(waveform.shape[1], target_waveform.shape[1])
+    
+        if random.choice([True, False]):
+            volume_change = random.randint(-10, 10)
+            waveform = change_volume(waveform, volume_change)
+        else:
+            volume_change = random.randint(-10, 10) 
+            target_waveform = change_volume(target_waveform, volume_change)
+
+        shorter, longer = (waveform, target_waveform) if waveform.shape[1] <= target_waveform.shape[1] else (target_waveform, waveform)
+        start_position = random.randrange(max(1,longer.shape[1] - shorter.shape[1]))      
+        end = min(end, start_position + shorter.shape[1])
+        
+        waveform[:, start_position:end] += target_waveform[:, start_position:end]
+        
+        return waveform
 
     def add_random_noise(self, waveform):
         random_noise_file = random.choice(self.noise_files)
@@ -239,12 +284,12 @@ class CustomDataset(SimpleAudioFakeDataset):
             bonafide = samples.get_group("bonafide").sample(diff_length, replace=True)
             self.samples = pd.concat([self.samples, bonafide], ignore_index=True)
 
-        mixed_length = len(samples.groups["both"])
-        diff_length = spoof_length - mixed_length
+        # mixed_length = len(samples.groups["both"])
+        # diff_length = spoof_length - mixed_length
 
-        if diff_length > 0:
-            mixed = samples.get_group("both").sample(diff_length, replace=True)
-            self.samples = pd.concat([self.samples, mixed], ignore_index=True)
+        # if diff_length > 0:
+        #     mixed = samples.get_group("both").sample(diff_length, replace=True)
+        #     self.samples = pd.concat([self.samples, mixed], ignore_index=True)
 
         noise_length = len(samples.groups["noise"])
         diff_length = spoof_length // 4 - noise_length
@@ -306,3 +351,7 @@ if __name__ == "__main__":
     # TODO(PK): points to fulfill
     # [ ] each attack type should be present in each subset
     # [x] no duplicates
+
+
+def change_volume(waveform, decibel_change):
+    return waveform * (10 ** (decibel_change / 20))
