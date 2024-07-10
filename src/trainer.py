@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 
 from src.aa import utils
 from src.aa.aa_types import AttackEnum
+from src.loss import CombinedBrierFocalLoss
 import wandb
 from eval_utils import get_metric
 import torchvision
@@ -75,22 +76,15 @@ class Trainer():
 
 
 def forward_and_loss(model, criterion, batch_x, batch_y, **kwargs):
-    batch_out = model(batch_x)
+    batch_out = torch.sigmoid(model(batch_x))
     loss_config = kwargs["loss_config"]
     
     fake_weight = loss_config["fake_weight"]
     assert 0 < fake_weight and fake_weight < 1, "weight should be value between 0 and 1"
-    loss_name = loss_config["name"]
 
-    if loss_name == "focal":
-        alpha_val = loss_config.get("alpha", 0.25)
-        reduction = loss_config.get("reduction", "mean")
-        fake_loss = criterion(batch_out[:,0], batch_y[:,0], alpha=alpha_val, reduction=reduction)
-        real_loss = criterion(batch_out[:,1], batch_y[:,1], alpha=alpha_val, reduction=reduction)
-    elif loss_name == "bce":
-        fake_loss = criterion(batch_out[:,0], batch_y[:,0])
-        real_loss = criterion(batch_out[:,1], batch_y[:,1])
-    
+    fake_loss = criterion(batch_out[:,0], batch_y[:,0])
+    real_loss = criterion(batch_out[:,1], batch_y[:,1])
+
     batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
     return batch_out, batch_loss
 
@@ -133,7 +127,7 @@ class GDTrainer(Trainer):
         
         loss_map = {
             "bce": torch.nn.BCEWithLogitsLoss(),
-            "focal": torchvision.ops.sigmoid_focal_loss
+            "focal": CombinedBrierFocalLoss(alpha=loss_config.get("alpha", 0.25))
         }
         
         criterion = loss_map[loss_config["name"]]
@@ -155,18 +149,6 @@ class GDTrainer(Trainer):
                 eta_min=5e-6,
                 # verbose=True,
             )
-            
-        use_reg = loss_config.get("use_reg", False)
-
-        if use_reg:
-            lambda_l1 = 0.01 
-            l1_regularization = 0.0
-            for name, param in model.named_parameters():
-                if 'weight' in name:
-                    l1_regularization += torch.sum(torch.abs(param))
-
-            l1_regularization *= lambda_l1
-            l1_regularization = l1_regularization.detach()
             
         use_cuda = self.device != "cpu"
 
@@ -191,19 +173,10 @@ class GDTrainer(Trainer):
                 batch_y = torch.stack(batch_y, dim=1).type(torch.float32).to(self.device)
 
                 batch_out, batch_loss = forward_and_loss_fn(model, criterion, batch_x, batch_y, use_cuda=use_cuda, loss_config=loss_config)
-                batch_pred = (torch.sigmoid(batch_out) + .5).int()
+                batch_pred = (batch_out + .5).int()
                 num_correct += torch.all(batch_pred == batch_y, dim=1).sum().item()
 
-                if use_reg:
-                    condition_1 = (batch_y[:, 0] == 1) & (batch_y[:, 1] == 0)
-                    condition_2 = (batch_y[:, 0] == 0) & (batch_y[:, 1] == 1)
-
-                    combined_condition = condition_1 | condition_2
-                    count = torch.sum(combined_condition).item()
-                    ratio = count / batch_size
-                    batch_loss += ratio * l1_regularization
-
-                y_train_pred = torch.cat((y_train_pred, torch.sigmoid(batch_out)), 0)
+                y_train_pred = torch.cat((y_train_pred, batch_out), 0)
                 y_train_true = torch.cat((y_train_true, batch_y), 0)
                 running_loss += (batch_loss.item() * batch_size)
 
@@ -247,30 +220,23 @@ class GDTrainer(Trainer):
                 batch_x = batch_x.to(self.device)
 
                 with torch.no_grad():
-                    batch_pred = model(batch_x)
+                    batch_out = torch.sigmoid(model(batch_x))
                 batch_y = torch.stack(batch_y, dim=1).type(torch.float32).to(self.device)
 
                 fake_weight = loss_config["fake_weight"]
                 loss_name = loss_config["name"]
 
-                if loss_name == "focal":
-                    alpha_val = loss_config.get("alpha", 0.25)
-                    reduction = loss_config.get("reduction", "mean")
-                    fake_loss = criterion(batch_out[:,0], batch_y[:,0], alpha=alpha_val, reduction=reduction)
-                    real_loss = criterion(batch_out[:,1], batch_y[:,1], alpha=alpha_val, reduction=reduction)
-                elif loss_name == "bce":
-                    fake_loss = criterion(batch_out[:,0], batch_y[:,0])
-                    real_loss = criterion(batch_out[:,1], batch_y[:,1])
+                fake_loss = criterion(batch_out[:,0], batch_y[:,0])
+                real_loss = criterion(batch_out[:,1], batch_y[:,1])
                 
                 batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
                 test_running_loss += (batch_loss.item() * batch_size)
                 
-                batch_pred = torch.sigmoid(batch_pred)
-                batch_pred_label = (batch_pred + .5).int()
+                batch_pred_label = (batch_out + .5).int()
                 num_correct += torch.all(batch_pred_label == batch_y, dim=1).sum().item()
                 
                 y_test_true = torch.cat((y_test_true, batch_y), 0)
-                y_test_pred = torch.cat((y_test_pred, torch.sigmoid(batch_pred)), 0)
+                y_test_pred = torch.cat((y_test_pred, batch_out), 0)
             
                 test_auc, test_brier, test_ece, test_combined = get_metric(y_test_true, y_test_pred)
 
