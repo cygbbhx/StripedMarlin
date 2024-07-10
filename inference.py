@@ -14,7 +14,6 @@ from torch.utils.data import DataLoader
 from datetime import datetime, timedelta, timezone
 import csv
 import yaml
-import noisereduce as nr
 import numpy as np
 
 LOGGER = logging.getLogger()
@@ -46,7 +45,9 @@ class InferenceDataset(SimpleAudioFakeDataset):
     def __getitem__(self, index) -> T_co:
         sample = self.samples.iloc[index]
         sample_path = os.path.join(self.path, sample['path'])
-        sample_path = os.path.join(self.path, sample['path'].replace('.ogg', '.wav'))
+
+        if not os.path.exists(sample_path):
+            sample_path = os.path.join(self.path, sample['path'].replace('.ogg', '.wav'))
 
         waveform, sample_rate = torchaudio.load(sample_path, normalize=True)
         waveform, sample_rate = self.wavefake_preprocessing(
@@ -90,7 +91,7 @@ def run_inference(
         dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=0,
+        num_workers=4,
     )
     batches_number = len(dataset) // batch_size
     id_list = []
@@ -117,13 +118,16 @@ def run_inference(
         data_name = 'vocal_remover'
     elif data_path == "/home/work/StripedMarlin/sohyun/noise_reducer":
         data_name = "noise_reducer"
+    elif data_path == "/home/work/StripedMarlin/eval_data":
+        data_name = "ours"
     else:
         data_name = 'raw'
 
     preprocess_sr = data_config.get("sample_rate", 16_000)
     duration = data_config.get("duration", 5)
-    
-    output_csv = open(f'submissions/inf_{config_name}_{submission_time}_{data_name}_{preprocess_sr//1000}-{duration}.csv', 'w') 
+
+    dir_name = 'eval' if 'eval' in data_path else 'submissions'
+    output_csv = open(f'{dir_name}/inf_{submission_time}_c{config_name}_{data_name}_{preprocess_sr//1000}-{duration}.csv', 'w') 
     writer = csv.writer(output_csv)
     writer.writerow(header)
     for i in range(len(id_list)):
@@ -159,10 +163,9 @@ def main(args):
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    # DATA_PATH = "/home/work/StripedMarlin/sohyun/separate_voice/test_processed"
     DATA_PATH = "/home/work/StripedMarlin/sohyun/test_cleaned"
     # DATA_PATH = "/home/work/StripedMarlin/contest_data"
-    # DATA_PATH = "/home/work/StripedMarlin/sohyun/noise_reducer"
+    # DATA_PATH = "/home/work/StripedMarlin/eval_data"
         
     print(f"using data from {DATA_PATH}")
     parser.add_argument("--data_path", type=str, default=DATA_PATH)

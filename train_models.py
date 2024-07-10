@@ -17,6 +17,9 @@ import os
 from src.datasets.custom_dataset import CustomDataset
 from datetime import datetime, timedelta, timezone
 
+import warnings
+warnings.filterwarnings('ignore')
+
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 

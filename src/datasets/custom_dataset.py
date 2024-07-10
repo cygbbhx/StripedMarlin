@@ -230,13 +230,11 @@ class CustomDataset(SimpleAudioFakeDataset):
     
     def mix_voice(self, waveform, target_waveform):        
         end = min(waveform.shape[1], target_waveform.shape[1])
-    
-        if random.choice([True, False]):
-            volume_change = random.randint(-10, 10)
-            waveform = change_volume(waveform, volume_change)
-        else:
-            volume_change = random.randint(-10, 10) 
-            target_waveform = change_volume(target_waveform, volume_change)
+        volume_change = random.randint(-5, 5)
+        waveform = change_volume(waveform, volume_change)
+
+        volume_change = random.randint(-5, 5) 
+        target_waveform = change_volume(target_waveform, volume_change)
 
         shorter, longer = (waveform, target_waveform) if waveform.shape[1] <= target_waveform.shape[1] else (target_waveform, waveform)
         start_position = random.randrange(max(1,longer.shape[1] - shorter.shape[1]))      

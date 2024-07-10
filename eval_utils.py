@@ -52,3 +52,54 @@ def get_metric(y_true, y_prob):
 
 
     return round(mean_auc, 4), round(mean_brier, 4), round(mean_ece, 4), round(combined_score, 4)
+
+def auc_brier_ece(answer_df, submission_df):
+    # Check for missing values in submission_df
+    if submission_df.isnull().values.any():
+        raise ValueError("The submission dataframe contains missing values.")
+
+
+    # Check if the number and names of columns are the same in both dataframes
+    if len(answer_df.columns) != len(submission_df.columns) or not all(answer_df.columns == submission_df.columns):
+        raise ValueError("The columns of the answer and submission dataframes do not match.")
+        
+    submission_df = submission_df[submission_df.iloc[:, 0].isin(answer_df.iloc[:, 0])]
+    submission_df.index = range(submission_df.shape[0])
+    
+    # Calculate AUC for each class
+    auc_scores = []
+    for column in answer_df.columns[1:]:
+        y_true = answer_df[column]
+        y_scores = submission_df[column]
+        auc = roc_auc_score(y_true, y_scores)
+        auc_scores.append(auc)
+
+
+    # Calculate mean AUC
+    mean_auc = np.mean(auc_scores)
+
+
+    brier_scores = []
+    ece_scores = []
+    
+    # Calculate Brier Score and ECE for each class
+    for column in answer_df.columns[1:]:
+        y_true = answer_df[column].values
+        y_prob = submission_df[column].values
+        
+        # Brier Score
+        brier = mean_squared_error(y_true, y_prob)
+        brier_scores.append(brier)
+        
+        # ECE
+        ece = expected_calibration_error(y_true, y_prob)
+        ece_scores.append(ece)
+    
+    # Calculate mean Brier Score and mean ECE
+    mean_brier = np.mean(brier_scores)
+    mean_ece = np.mean(ece_scores)
+    
+    # Calculate combined score
+    combined_score = 0.5 * (1 - mean_auc) + 0.25 * mean_brier + 0.25 * mean_ece
+    
+    return combined_score
