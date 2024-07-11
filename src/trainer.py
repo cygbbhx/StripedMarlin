@@ -83,10 +83,13 @@ def forward_and_loss(model, criterion, batch_x, batch_y, **kwargs):
     fake_weight = loss_config["fake_weight"]
     assert 0 < fake_weight and fake_weight < 1, "weight should be value between 0 and 1"
 
-    fake_loss = criterion(batch_out[:,0], batch_y[:,0])
-    real_loss = criterion(batch_out[:,1], batch_y[:,1])
+    if fake_weight == 0.5:
+        batch_loss = criterion(batch_out, batch_y)
+    else:
+        fake_loss = criterion(batch_out[:,0], batch_y[:,0])
+        real_loss = criterion(batch_out[:,1], batch_y[:,1])
+        batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
 
-    batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
     return batch_out, batch_loss
 
 
@@ -239,10 +242,13 @@ class GDTrainer(Trainer):
                 fake_weight = loss_config["fake_weight"]
                 loss_name = loss_config["name"]
 
-                fake_loss = criterion(batch_out[:,0], batch_y[:,0])
-                real_loss = criterion(batch_out[:,1], batch_y[:,1])
-                
-                batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
+                if fake_weight == 0.5:
+                    batch_loss = criterion(batch_out, batch_y)
+                else:
+                    fake_loss = criterion(batch_out[:,0], batch_y[:,0])
+                    real_loss = criterion(batch_out[:,1], batch_y[:,1])
+                    
+                    batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
                 test_running_loss += (batch_loss.item() * batch_size)
                 
                 batch_pred_label = (batch_out + .5).int()
@@ -300,7 +306,9 @@ class GDTrainer(Trainer):
                 )
         
             if self.wandb:
-                wandb.log({"best_test_acc": best_acc})
+                wandb.log({"best_test_score": best_score})
+
+            train_loader.dataset.resample()
 
         model.load_state_dict(best_model)
         return model
