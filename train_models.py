@@ -62,27 +62,7 @@ def get_datasets(
         reduced_number=amount_to_use[1],
         oversample=True
     )
-
-
-    # data_train = DetectionDataset(
-    #     asvspoof_path=datasets_paths[0],
-    #     wavefake_path=datasets_paths[1],
-    #     fakeavceleb_path=datasets_paths[2],
-    #     custom_path=datasets_paths[3],
-    #     subset="train",
-    #     reduced_number=amount_to_use[0],
-    #     oversample=True,
-    # )
-    # data_test = DetectionDataset(
-    #     asvspoof_path=datasets_paths[0],
-    #     wavefake_path=datasets_paths[1],
-    #     fakeavceleb_path=datasets_paths[2],
-    #     custom_path=datasets_paths[3],
-    #     subset="test",
-    #     reduced_number=amount_to_use[1],
-    #     oversample=True,
-    # )
-
+    
     return data_train, data_test
 
 
@@ -124,7 +104,7 @@ def train_nn(
         device=device,
     ).to(device)
 
-    use_scheduler = "rawnet3" in model_name.lower()
+    use_scheduler = config['model']['loss']['scheduler']
 
     LOGGER.info(f"Training '{model_name}' model on {len(data_train)} audio files.")
 
@@ -182,27 +162,29 @@ def main():
         if args.sweep:
             run = wandb.init(name=f'{timestamp}')
             # config["model"]["name"] = wandb.config.model
-            # config["model"]["optimizer"]["lr"] = wandb.config.lr
+            config["model"]["optimizer"]["lr"] = wandb.config.lr
             # config["model"]["parameters"]["frontend_algorithm"] = wandb.config.frontend
             
             # config["data"]["use_rir"] = wandb.config.rir
             # config["data"]["use_bg"] = wandb.config.bg
             # config["data"]["use_lowpass"] = wandb.config.lowpass
 
-            loss_name = wandb.config.loss_name
-            if 'focal' in loss_name:
-                alpha_val = int(loss_name.split('_')[-1]) / 100
-                loss_name = 'focal'
-                config["model"]["loss"]["alpha"] = alpha_val
+            # loss_name = wandb.config.loss_name
+            # if 'focal' in loss_name:
+            #     alpha_val = int(loss_name.split('_')[-1]) / 100
+            #     loss_name = 'focal'
+            #     config["model"]["loss"]["alpha"] = alpha_val
             
-            config["model"]["loss"]["name"] = loss_name
+            # config["model"]["loss"]["name"] = loss_name
+            config["model"]["loss"]["gamma"] = wandb.config.gamma
+            config["model"]["loss"]["alpha"] = wandb.config.alpha
             config["model"]["loss"]["fake_weight"] = wandb.config.fake_weight
             # config["model"]["loss"]["use_reg"] = wandb.config.reg
 
             
         else:
             model_name = config["model"]["name"]
-            wandb.init(entity="cygbbhx", project="lcnn", config=config, name=f"{timestamp}-{model_name}")
+            wandb.init(entity="cygbbhx", project="WavLM-pretrain-batchsize4", config=config, name=f"{timestamp}-{model_name}")
 
     seed = config["data"].get("seed", 42)
     # fix all seeds
@@ -216,7 +198,7 @@ def main():
     model_dir = Path(args.ckpt)
     model_dir.mkdir(parents=True, exist_ok=True)
 
-    if config["model"]["name"] == "rawnet3":
+    if config["model"]["name"] in ["rawnet3", "HuBERT"]:
         args.batch_size = args.batch_size // 2
 
     train_nn(
@@ -293,7 +275,7 @@ def parse_args():
         default=default_test_amount,
     )
 
-    default_batch_size = 128
+    default_batch_size = 4
     parser.add_argument(
         "--batch_size",
         "-b",
@@ -302,7 +284,7 @@ def parse_args():
         default=default_batch_size,
     )
 
-    default_epochs = 15
+    default_epochs = 20
     parser.add_argument(
         "--epochs",
         "-e",
@@ -331,20 +313,21 @@ if __name__ == "__main__":
         wandb.login(key=WANDB_AUTH_KEY)
         if args.sweep:
             sweep_configuration = {
-                'method': 'grid',
-                'name': '16000',
-                'metric': {'goal': 'maximize', 'name': 'best_test_acc'},
+                'method': 'random',
+                'name': 'WavLM pretrain experiments',
+                'metric': {'goal': 'minimize', 'name': 'best_test_score'},
                 'parameters': 
                 {
                     # 'model': {'values': ['lcnn', 'rawnet3', 'specrnet']},
-                    'loss_name': {'values': ['bce', 'focal_25', 'focal_1', 'focal_40']},
-                    # 'reg': {'values': [False, True]},
-                    'fake_weight': {'values': [0.2, 0.5, 0.8]},
-                    # 'frontend': {'values': ['mfcc', 'lfcc', 'mel_spec']},
-                    # 'lr': {'values': [0.0001, 0.0003, 0.001]},
+                    # 'loss_name': {'values': ['focal_50', 'focal_75', 'focal_80']},
+                    'gamma': {'values': [2.0, 3.0]},
+                    'lr': {'values': [0.0001, 0.0002, 0.00005]},
+                    'alpha': {'values': [0.50, 0.75, 0.80]},
+                    'fake_weight': {'values': [0.7, 0.8, 2.0]},
                     # 'rir': {'values': [True, False]},
                     # 'bg': {'values': [True, False]},
                     # 'lowpass': {'values': [True, False]}
+                    # 'sam': {'values': [True, False]}
                 }
             }
 

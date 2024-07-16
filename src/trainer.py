@@ -77,18 +77,20 @@ class Trainer():
 
 
 def forward_and_loss(model, criterion, batch_x, batch_y, **kwargs):
-    batch_out = torch.sigmoid(model(batch_x))
+    # output = model(batch_x).logits
+    output = model(batch_x)
+    batch_out = torch.sigmoid(output)
     loss_config = kwargs["loss_config"]
     
     fake_weight = loss_config["fake_weight"]
-    assert 0 < fake_weight and fake_weight < 1, "weight should be value between 0 and 1"
 
     if fake_weight == 0.5:
         batch_loss = criterion(batch_out, batch_y)
     else:
+        real_weight = 1 - fake_weight if fake_weight < 1 else 1
         fake_loss = criterion(batch_out[:,0], batch_y[:,0])
         real_loss = criterion(batch_out[:,1], batch_y[:,1])
-        batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
+        batch_loss = fake_weight * fake_loss + real_weight * real_loss
 
     return batch_out, batch_loss
 
@@ -105,6 +107,8 @@ class GDTrainer(Trainer):
         test_len: Optional[float] = None,
         test_dataset: Optional[torch.utils.data.Dataset] = None,
     ):
+        patience = []
+
         if test_dataset is not None:
             train = dataset
             test = test_dataset
@@ -131,7 +135,7 @@ class GDTrainer(Trainer):
         
         loss_map = {
             "bce": torch.nn.BCEWithLogitsLoss(),
-            "focal": CombinedBrierFocalLoss(alpha=loss_config.get("alpha", 0.25))
+            "focal": CombinedBrierFocalLoss(alpha=loss_config.get("alpha", 0.25), gamma=loss_config.get("gamma", 2.0))
         }
         
         criterion = loss_map[loss_config["name"]]
@@ -185,25 +189,28 @@ class GDTrainer(Trainer):
                 batch_pred = (batch_out + .5).int()
                 num_correct += torch.all(batch_pred == batch_y, dim=1).sum().item()
 
-                y_train_pred = torch.cat((y_train_pred, batch_out), 0)
-                y_train_true = torch.cat((y_train_true, batch_y), 0)
+                # y_train_pred = torch.cat((y_train_pred, batch_out), 0)
+                # y_train_true = torch.cat((y_train_true, batch_y), 0)
                 running_loss += (batch_loss.item() * batch_size)
 
                 if i % 100 == 0:
                     train_loss = running_loss / num_total
                     train_acc = num_correct/num_total*100
-                    train_auc, train_brier, train_ece, train_combined = get_metric(y_train_true, y_train_pred)
+                    # train_auc, train_brier, train_ece, train_combined = get_metric(y_train_true, y_train_pred)
 
-                    LOGGER.info(f"[{epoch:04d}][{i:05d}]: {train_loss} {train_acc} | {train_combined} (AUC: {train_auc} BRI: {train_brier} ECE: {train_ece})")
+                    LOGGER.info(f"[{epoch:04d}][{i:05d}]: {train_loss} {train_acc}")
+                    # LOGGER.info(f"[{epoch:04d}][{i:05d}]: {train_loss} {train_acc} | {train_combined} (AUC: {train_auc} BRI: {train_brier} ECE: {train_ece})")
                     
                 if self.wandb:
-                    wandb.log({"step_loss": train_loss, "step_acc": train_acc,
-                                "step_auc": train_auc, "step_brier": train_brier, "step_ece": train_ece, "step_combined":train_combined})
+                    wandb.log({"step_loss": train_loss, "step_acc": train_acc})
+                                # "step_auc": train_auc, "step_brier": train_brier, "step_ece": train_ece, "step_combined":train_combined})
 
                 if loss_config.get('sam', False):
                     batch_loss.backward()
                     optim.first_step(zero_grad=True)
-                    criterion(torch.sigmoid(model(batch_x)), batch_y).backward()
+                    # output = model(batch_x).logits
+                    output = model(batch_x)
+                    criterion(torch.sigmoid(output), batch_y).backward()
                     optim.second_step(zero_grad=True)
                 else:
                     optim.zero_grad()
@@ -217,9 +224,9 @@ class GDTrainer(Trainer):
             train_accuracy = (num_correct / num_total) * 100
 
             if self.wandb:
-                train_auc, train_brier, train_ece, train_combined = get_metric(y_train_true, y_train_pred)
-                wandb.log({"epoch": epoch, "train_loss": running_loss, "train_acc": train_accuracy,
-                           "train_auc": train_auc, "train_brier": train_brier, "train_ece": train_ece, "train_combined": train_combined})
+                # train_auc, train_brier, train_ece, train_combined = get_metric(y_train_true, y_train_pred)
+                wandb.log({"epoch": epoch, "train_loss": running_loss, "train_acc": train_accuracy})
+                        #    "train_auc": train_auc, "train_brier": train_brier, "train_ece": train_ece, "train_combined": train_combined})
                 
             LOGGER.info(f"Epoch [{epoch+1}/{self.epochs}]: train/loss: {running_loss}, train/accuracy: {train_accuracy}")
 
@@ -236,7 +243,9 @@ class GDTrainer(Trainer):
                 batch_x = batch_x.to(self.device)
 
                 with torch.no_grad():
-                    batch_out = torch.sigmoid(model(batch_x))
+                    # output = model(batch_x).logits
+                    output = model(batch_x)
+                    batch_out = torch.sigmoid(output)
                 batch_y = torch.stack(batch_y, dim=1).type(torch.float32).to(self.device)
 
                 fake_weight = loss_config["fake_weight"]
@@ -247,8 +256,9 @@ class GDTrainer(Trainer):
                 else:
                     fake_loss = criterion(batch_out[:,0], batch_y[:,0])
                     real_loss = criterion(batch_out[:,1], batch_y[:,1])
-                    
-                    batch_loss = fake_weight * fake_loss + (1 - fake_weight) * real_loss
+
+                    real_weight = 1 - fake_weight if fake_weight < 1 else 1
+                    batch_loss = fake_weight * fake_loss + real_weight * real_loss
                 test_running_loss += (batch_loss.item() * batch_size)
                 
                 batch_pred_label = (batch_out + .5).int()
@@ -278,14 +288,15 @@ class GDTrainer(Trainer):
             LOGGER.info(
                 f"Epoch [{epoch:04d}]:\n"
                 f"      loss: {running_loss}, train acc: {train_accuracy}, test_acc: {test_acc},\n"
-                f"      train_combined: {train_combined} (AUC: {train_auc} BRI: {train_brier} ECE: {train_ece}),"
+                # f"      train_combined: {train_combined} (AUC: {train_auc} BRI: {train_brier} ECE: {train_ece}),"
                 f"      test_combined: {test_combined} (AUC: {test_auc} BRI: {test_brier} ECE: {test_ece})"
             )
 
             if best_model is None or best_score > test_combined:
                 best_score = test_combined
                 best_model = deepcopy(model.state_dict())
-                train_acc_fm = str(train_combined).replace('.', '')[:4].zfill(4)
+                train_acc_fm = str(train_acc).replace('.', '')[:4].zfill(4)
+                # train_acc_fm = str(train_combined).replace('.', '')[:4].zfill(4)
                 test_acc_fm  = str(test_combined).replace('.', '')[:4].zfill(4)
                 ckpt_name = f"{epoch:04d}_tr{train_acc_fm}_ts{test_acc_fm}"
 
@@ -309,6 +320,10 @@ class GDTrainer(Trainer):
                 wandb.log({"best_test_score": best_score})
 
             train_loader.dataset.resample()
-
+            patience.append(train_acc)
+            if len(patience) > 3:
+                if patience[-1] > train_acc and patience[-2] > train_acc and patience[-3] > train_acc:
+                    model.load_state_dict(best_model)
+                    return model
         model.load_state_dict(best_model)
         return model
