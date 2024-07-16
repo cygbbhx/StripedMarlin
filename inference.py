@@ -91,7 +91,7 @@ def run_inference(
         dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=0,
     )
     batches_number = len(dataset) // batch_size
     id_list = []
@@ -105,6 +105,7 @@ def run_inference(
         with torch.no_grad():
             batch_x = batch_x.to(device)
 
+            # batch_pred = model(batch_x).logits.squeeze(1)
             batch_pred = model(batch_x).squeeze(1)
             batch_pred = torch.sigmoid(batch_pred)
 
@@ -120,6 +121,10 @@ def run_inference(
         data_name = "noise_reducer"
     elif data_path == "/home/work/StripedMarlin/eval_data":
         data_name = "ours"
+    elif data_path == "/home/work/StripedMarlin/sohyun/generate_spoof":
+        data_name = "voice_conversion"
+    elif data_path == "/home/work/StripedMarlin/contest_data/unlabeled":
+        data_name = "unlabeled"
     else:
         data_name = 'raw'
 
@@ -162,14 +167,7 @@ def main(args):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-
-    DATA_PATH = "/home/work/StripedMarlin/sohyun/test_cleaned"
-    # DATA_PATH = "/home/work/StripedMarlin/contest_data"
-    # DATA_PATH = "/home/work/StripedMarlin/eval_data"
         
-    print(f"using data from {DATA_PATH}")
-    parser.add_argument("--data_path", type=str, default=DATA_PATH)
-
     default_model_config = "config.yaml"
     parser.add_argument(
         "--config",
@@ -178,6 +176,27 @@ def parse_args():
         default=default_model_config,
     )
     
+    parser.add_argument("--mode", type=str, choices=["eval", "raw", "vr", "vc", "unlabeled"], required=True, help="Mode to run: eval, raw, vr, vc, unlabeled")
+
+    args = parser.parse_args()
+
+    if args.mode == "eval":
+        DATA_PATH = "/home/work/StripedMarlin/eval_data"
+    elif args.mode == "raw":
+        DATA_PATH = "/home/work/StripedMarlin/contest_data"
+    elif args.mode == "vr":
+        DATA_PATH = "/home/work/StripedMarlin/sohyun/test_cleaned"
+    elif args.mode == "vc":
+        DATA_PATH = "/home/work/StripedMarlin/sohyun/generate_spoof"
+    elif args.mode == "unlabeled":
+        DATA_PATH = "/home/work/StripedMarlin/contest_data/unlabeled"
+    else:
+        raise ValueError("Invalid mode selected.")
+
+    parser.add_argument("--data_path", type=str, default=DATA_PATH)
+
+    print(f"using data from {DATA_PATH}")
+
     parser.add_argument("--cpu", "-c", help="Force using cpu", action="store_true")
 
     return parser.parse_args()
