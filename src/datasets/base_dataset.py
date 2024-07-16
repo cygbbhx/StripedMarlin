@@ -20,7 +20,8 @@ LOGGER = logging.getLogger(__name__)
 
 WAVE_FAKE_INTERFACE = True
 # WAVE_FAKE_SR = 16_000
-WAVE_FAKE_TRIM = True
+# WAVE_FAKE_TRIM = True
+WAVE_FAKE_TRIM = False
 WAVE_FAKE_NORMALIZE = True
 WAVE_FAKE_CELL_PHONE = False
 WAVE_FAKE_PAD = True
@@ -66,6 +67,11 @@ class SimpleAudioFakeDataset(Dataset):
         subsets = np.split(
             samples_list, [int(p * len(samples_list)), int((p + s) * len(samples_list))]
         )
+        # if len(subsets[0].shape) > 1:
+        #     choices = np.random.choice(len(subsets[0]), int(len(subsets[0]) * 0.1))
+        #     subsets[1] = subsets[0][choices]
+        # else:
+        #     subsets[1] = np.random.choice(subsets[0], int(len(subsets[0]) * 0.1))
         return dict(zip(["train", "test", "val"], subsets))[self.subset]
 
     def df2tuples(self):
@@ -347,7 +353,8 @@ class PadDataset(torch.utils.data.Dataset):
         waveform_len = waveform.shape[0]
 
         if waveform_len >= cut:
-            return waveform[:cut]
+            start = np.random.randint(0, waveform_len - cut + 1)
+            return waveform[start:start + cut]
 
         # need to pad
         # num_repeats = int(cut / waveform_len) + 1
