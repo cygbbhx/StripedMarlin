@@ -1,6 +1,6 @@
 from typing import Dict
 
-from src.models import lcnn, rawnet3, specrnet, HuBERT
+from src.models import lcnn, rawnet3, specrnet, HuBERT, WavLM_MFA
 
 
 def get_model(model_name: str, config: Dict, device: str):
@@ -16,5 +16,7 @@ def get_model(model_name: str, config: Dict, device: str):
         )
     elif model_name == "HuBERT":
         return HuBERT.get_model()
+    elif model_name == "WavLM":
+        return WavLM_MFA.WavLM_MFA(freeze=False)
     else:
         raise ValueError(f"Model '{model_name}' not supported")
