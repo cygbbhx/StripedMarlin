@@ -13,6 +13,7 @@ from torch.utils.data.dataset import T_co
 import glob 
 import torchaudio
 import random
+import librosa
 
 DF_ASVSPOOF_SPLIT = {
     "partition_ratio": [0.9, 0.1],
@@ -41,10 +42,13 @@ class CustomDataset(SimpleAudioFakeDataset):
 
         self.noise_files = glob.glob(data_config["noise_path"])
         self.sample_rate = data_config["sample_rate"]
-        self.duration = data_config["duration"] * self.sample_rate + 500 
+        self.duration = data_config["duration"] * self.sample_rate
 
         self.partition_ratio = DF_ASVSPOOF_SPLIT["partition_ratio"]
         self.seed = DF_ASVSPOOF_SPLIT["seed"]
+
+        # self.anno_data = pd.read_csv(os.path.join(self.path, f'train.csv'))
+        self.custom_spoofs = glob.glob('/home/work/StripedMarlin/sohyun/generate_spoof/generated/*.ogg')
 
         self.anno_data = self.cluster_based_sampling()
         self.flac_paths = self.get_file_references()
@@ -85,7 +89,9 @@ class CustomDataset(SimpleAudioFakeDataset):
         flac_paths = {}
         flac_paths.update(dict(zip(self.anno_data['id'], self.path + '/' + self.anno_data['path'])))
         noise_filenames = [os.path.splitext(os.path.basename(file))[0] for file in self.noise_files]
+        vc_filenames = [os.path.splitext(os.path.basename(file))[0] for file in self.custom_spoofs]
         flac_paths.update(dict(zip(noise_filenames, self.noise_files)))
+        flac_paths.update(dict(zip(vc_filenames, self.custom_spoofs)))
 
         return flac_paths
 
@@ -137,21 +143,29 @@ class CustomDataset(SimpleAudioFakeDataset):
         mixed_samples = []
         noise_samples = []
 
+        single_sample_num = 5000
+        mixing_sample_num = 5000
+        vc_sample_num = 0
+
         all_real_samples = (self.path + '/' + self.anno_data.loc[self.anno_data['label'] == 'real', 'path']).tolist()
-        single_real_samples = random.sample(all_real_samples, k=5000)
-        mixing_real_samples = random.sample(all_real_samples, k=5000)
+        single_real_samples = random.sample(all_real_samples, k=single_sample_num)
+        remaining_real_samples = list(set(all_real_samples) - set(single_real_samples))
+        mixing_real_samples = random.sample(remaining_real_samples, k=single_sample_num)
 
         all_fake_samples = (self.path + '/' + self.anno_data.loc[self.anno_data['label'] == 'fake', 'path']).tolist()
-        single_fake_samples = random.sample(all_fake_samples, k=5000)
-        mixing_fake_samples = random.sample(all_fake_samples, k=5000)
+        new_fake_samples = self.custom_spoofs
 
-        for _ in range(5000):
+        single_fake_samples = random.sample(all_fake_samples, k=single_sample_num - vc_sample_num) + random.sample(new_fake_samples, k=vc_sample_num)
+        remaining_fake_samples = list(set(all_fake_samples) - set(single_fake_samples))
+        mixing_fake_samples = random.sample(remaining_fake_samples, k=single_sample_num - vc_sample_num) + random.sample(new_fake_samples, k=vc_sample_num)
+
+        for _ in range(single_sample_num):
             mixed_real_samples.append(random.sample(mixing_real_samples, 2))
 
-        for _ in range(5000):
+        for _ in range(single_sample_num):
             mixed_fake_samples.append(random.sample(mixing_fake_samples, 2))
 
-        for _ in range(10000):
+        for _ in range(single_sample_num * 2):
             real_sample = random.choice(mixing_real_samples)
             fake_sample = random.choice(mixing_fake_samples)
             mixed_samples.append([real_sample, fake_sample])
@@ -199,26 +213,39 @@ class CustomDataset(SimpleAudioFakeDataset):
         if type(sample["path"]) is list: # Mixed sample
             path1, path2 = sample["path"]
             waveform1, sample_rate1 = torchaudio.load(path1)
+            waveform1, sample_rate1 = self.wavefake_preprocessing(
+            waveform1, sample_rate1, wave_fake_sr=self.sample_rate, wave_fake_cut=self.duration
+            )
+            # waveform1 = apply_random_pitch_change(waveform1, sample_rate1)
             waveform2, sample_rate2 = torchaudio.load(path2)
+            waveform2, sample_rate2 = self.wavefake_preprocessing(
+            waveform2, sample_rate2, wave_fake_sr=self.sample_rate, wave_fake_cut=self.duration
+            )
+            # waveform2 = apply_random_pitch_change(waveform2, sample_rate2)
 
             seconds = self.duration // self.sample_rate
             waveform = self.mix_voices(waveform1, waveform2, sample_rate1, duration=seconds)
             sample_rate = sample_rate1
         else:
             waveform, sample_rate = torchaudio.load(path)
-        
-        # normalize and resampling is done below code               
-        waveform, sample_rate = self.wavefake_preprocessing(
+            waveform, sample_rate = self.wavefake_preprocessing(
             waveform, sample_rate, wave_fake_sr=self.sample_rate, wave_fake_cut=self.duration
-        )
+            )
+            # waveform = apply_random_pitch_change(waveform, sample_rate)
 
+        p = np.random.rand()
         if label != "noise":
-            p = np.random.rand()
             if p < 0.3 and self.use_lowpass:
-                waveform = self.lowpass_filter(waveform.unsqueeze(0), sample_rate)
+                waveform = self.lowpass_filter(waveform, sample_rate)
                 waveform = waveform.squeeze(0)
             if p < 0.8:
-                waveform = self.add_random_noise(waveform.unsqueeze(0))
+                waveform = self.add_random_noise(waveform)
+                waveform = waveform.squeeze(0)
+        else:
+            volume_change = random.choice([0, 1, 2.5, 5, 10])
+            waveform = change_volume(waveform, volume_change)
+            if p < 0.3:
+                waveform = self.add_random_noise(waveform)
                 waveform = waveform.squeeze(0)
 
         max_val = torch.max(torch.abs(waveform))
@@ -268,7 +295,7 @@ class CustomDataset(SimpleAudioFakeDataset):
     def mix_voices(self, waveform, target_waveform, sample_rate, duration=5):
         combined_length = duration * sample_rate
         min_length = sample_rate
-        combined_waveform = torch.zeros(1, combined_length)
+        combined_waveform = torch.zeros(combined_length)
 
         volume_change = random.choice([-15, -10, -5, 0, 5])
         waveform = change_volume(waveform, volume_change)
@@ -276,20 +303,17 @@ class CustomDataset(SimpleAudioFakeDataset):
         volume_change = random.choice([-15, -10, -5, 0, 5])
         target_waveform = change_volume(target_waveform, volume_change)
 
-        start = random.randint(0, combined_length - min_length)
-        end = min(start + waveform.shape[1], combined_length)
-        combined_waveform[:, start:end] += waveform[:, :end-start]
+        combined_waveform += waveform + target_waveform
 
-        start = random.randint(0, combined_length - min_length)
-        end = min(start + target_waveform.shape[1], combined_length)
-        combined_waveform[:, start:end] += target_waveform[:, :end-start]
-        
         return combined_waveform
 
     def add_random_noise(self, waveform):
         random_noise_file = random.choice(self.noise_files)
         noise = torchaudio.load(random_noise_file)
-        noise_waveform, _ = noise
+        noise_waveform, sample_rate = noise
+        noise_waveform, sample_rate = self.wavefake_preprocessing(
+                                        noise_waveform, sample_rate, wave_fake_sr=self.sample_rate, wave_fake_cut=self.duration
+                                        )
         volume_change = random.choice([0, 1, 2.5, 5, 10])
         noise_waveform = change_volume(noise_waveform, volume_change)
 
@@ -308,13 +332,7 @@ class CustomDataset(SimpleAudioFakeDataset):
             else:
                 waveform = noisy_speeches[2:3]
         else:
-            waveform_length = waveform.shape[1]
-            noise_length = noise_waveform.shape[1]
-
-            start_position = random.randrange(max(1, waveform_length - noise_length + 1))
-            end_position = min(start_position + noise_length, waveform_length)
-            segment_length = end_position - start_position            
-            waveform[:, start_position:end_position] += noise_waveform[:, :segment_length]
+            waveform += noise_waveform
 
         return waveform
 
@@ -359,6 +377,11 @@ class CustomDataset(SimpleAudioFakeDataset):
 
         self.samples = pd.concat([samples.get_group("mixed"), samples.get_group("noise"), spoofs, bonas], ignore_index=True)
 
+def apply_random_pitch_change(waveform, sample_rate):
+    step = random.randint(-5, 5)
+    # torchaudio.functional.pitch_shift()
+    waveform = librosa.effects.pitch_shift(np.array(waveform[0]),sample_rate,n_steps=step)
+    return torch.Tensor(waveform).unsqueeze(0)
 
 if __name__ == "__main__":
     DATASET_PATH = "/home/work/StripedMarlin/contest_data"
