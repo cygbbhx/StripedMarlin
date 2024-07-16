@@ -105,7 +105,6 @@ def run_inference(
         with torch.no_grad():
             batch_x = batch_x.to(device)
 
-            # batch_pred = model(batch_x).logits.squeeze(1)
             batch_pred = model(batch_x).squeeze(1)
             batch_pred = torch.sigmoid(batch_pred)
 

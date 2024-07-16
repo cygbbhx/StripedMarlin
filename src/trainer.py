@@ -77,7 +77,6 @@ class Trainer():
 
 
 def forward_and_loss(model, criterion, batch_x, batch_y, **kwargs):
-    # output = model(batch_x).logits
     output = model(batch_x)
     batch_out = torch.sigmoid(output)
     loss_config = kwargs["loss_config"]
@@ -208,7 +207,6 @@ class GDTrainer(Trainer):
                 if loss_config.get('sam', False):
                     batch_loss.backward()
                     optim.first_step(zero_grad=True)
-                    # output = model(batch_x).logits
                     output = model(batch_x)
                     criterion(torch.sigmoid(output), batch_y).backward()
                     optim.second_step(zero_grad=True)
@@ -243,7 +241,6 @@ class GDTrainer(Trainer):
                 batch_x = batch_x.to(self.device)
 
                 with torch.no_grad():
-                    # output = model(batch_x).logits
                     output = model(batch_x)
                     batch_out = torch.sigmoid(output)
                 batch_y = torch.stack(batch_y, dim=1).type(torch.float32).to(self.device)
