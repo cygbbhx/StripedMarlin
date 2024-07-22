@@ -1,6 +1,6 @@
 from typing import Dict
 
-from src.models import lcnn, rawnet3, specrnet, HuBERT, WavLM_MFA
+from src.models import lcnn, rawnet3, specrnet, HuBERT, WavLM_MFA, AASIST
 
 
 def get_model(model_name: str, config: Dict, device: str):
