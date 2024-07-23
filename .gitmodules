@@ -1,0 +1,3 @@
+[submodule "vocal-remover"]
+	path = vocal-remover
+	url = https://github.com/tsurumeso/vocal-remover.git
