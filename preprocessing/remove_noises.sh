@@ -1,0 +1,1 @@
+python separate_noise.py --i path/to/test_data -o path/to/output_dir --save_option vocal-only

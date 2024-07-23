@@ -38,7 +38,7 @@ conda env create --file modelscope.yaml
    ```
 2. Generate audios based on the outputs using AudioLDM. You can also use command-line inside the bash script.
    ```bash
-   bash preprocessing/generate_noise.sh
+   bash preprocessing/generate_noise.sh path_to_finegrained_list.txt
    ```
 
 ### (2) Noise Generation (Vocal Removal)
@@ -58,7 +58,21 @@ conda env create --file modelscope.yaml
    ```
 
 ### Clustering Preparation
-We provide code for visualizing clusters of voices using speaker recognition embeddings.
+We provide code for visualizing clusters of voices using audio embeddings. 
+
+1. Extract embeddings
+   ```bash
+   cd preprocessing/clustering
+   python extract_embeddings.py -i path/to/train_data
+   ```
+2. Run Clustering
+   ```bash
+   python run_clustering.py
+   cd ../..
+   ```
+
+After you obtain the `cluster_labels.csv`, combine the labels with the original `train.csv` and name it as `train_w_cl.csv`.
+
 
 ## Training
 
