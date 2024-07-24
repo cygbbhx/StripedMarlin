@@ -12,6 +12,7 @@ from sklearn import mixture
 from sklearn.decomposition import PCA
 from matplotlib.patches import Ellipse
 import pandas as pd
+import csv
 
 def get_optimal_clusters(embeddings):
     min_clusters = 2
@@ -45,7 +46,6 @@ def get_optimal_clusters(embeddings):
     plt.ylabel('Inertia score')
     plt.savefig('Kmeans_Inertia.png')
     plt.show()
-
 
     # Choose the optimal number of clusters based on the silhouette scores
     optimal_clusters = np.argmax(silhouette_scores) + min_clusters
@@ -99,7 +99,7 @@ def visualize_gmm_clustering(emb, n_clusters):
     return cluster_labels
 
 def write_labels(cluster_labels, inst_ids, filename):
-    original_data = pd.read_csv('/home/work/StripedMarlin/contest_data/train.csv')
+    original_data = pd.read_csv('../../data/train.csv')
     file = open(f'{filename}.csv', 'w')
     writer = csv.writer(file)
     writer.writerow(['id', 'cluster', 'label'])
@@ -117,6 +117,6 @@ with open('train_ids.pkl', 'rb') as file:
     ids = pickle.load(file)
 
 assert len(embeddings) == len(ids)
-cluster_num = get_optimal_clusters(embeddings)
-our_labels = visualize_gmm_clustering(embeddings, cluster_num)
-write_labels(our_labels, ids, 'cluster_labels.csv')
+# cluster_num = get_optimal_clusters(embeddings)
+our_labels = visualize_gmm_clustering(embeddings, 3)
+write_labels(our_labels, ids, 'cluster_labels')

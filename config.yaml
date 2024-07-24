@@ -12,7 +12,7 @@ data:
   use_bg: False
   use_lowpass: False
 
-  noise_path: "/home/work/StripedMarlin/sohyun/generate_noise/combined/*.wav"
+  noise_path: "custom_data/combined/*.wav"
 
   sample_rate: 16_000
   duration: 5

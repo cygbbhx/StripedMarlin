@@ -14,6 +14,8 @@ sudo apt install libsox-dev
 ```
 
 ### Requirements
+- For all codes below `preprocessing` folder, use `modelscope.yaml` as environment.
+- Else, (eg. training, testing..) use `StripedMarlin.yaml` as environment. (If you simply want to reproduce with weights and data, this will be enough.)
 ```bash
 conda create -n StripedMarlin python=3.8
 conda activate StripedMarlin
@@ -26,10 +28,34 @@ conda env create --file StripedMarlin.yaml
 ```bash
 conda env create --file modelscope.yaml
 ```
+## Guidlines for Reproducing Private Score
+This part describes directly reproducing private score.
+Download the original data
 
+1. For AASIST, run:
+   ```bash
+   python inference.py --config configs/AASIST_best.yaml --mode vr
+   ```
+2. For WavLM, run:
+   ```bash
+   python inference.py --config configs/WavLM_best.yaml --mode raw
+   ```
+3. You will see 2 submission files created. Ensemble them by:
+   ```bash
+   python ensemble.py path_to_csv_file1 path_to_csv_file2
+   ```
+4. You will see 1 ensembled csv file created. Post-process the result using VAD:
+   ```bash
+   python rewrite.py path_to_csv_file preprocessing/example/vad.csv path_to_output_file.csv
+   ```
+5. Finally, ensemble result from 3 and 4:
+   ```bash
+   python ensemble.py csv_after_step3.csv csv_after_step4.csv
+   ```
 
 ## Train Dataset Preparation
 
+Within the zip file, we provide our custom dataset in `custom_data` together, but you can follow the steps if you would like to reproduce custom dataset.
 
 ### (1) Noise Generation (Text-to-Audio)
 1. Generate text prompts using LLaMA-v2. Note that we clean up the outputs by removing duplicates or repeated words. Example output and fine-grained output can be found at `preprocessing/example/llama2_output_raw.txt` and `preprocessing/example/llama2_output_finegrained.txt`, respectively.
@@ -47,7 +73,7 @@ conda env create --file modelscope.yaml
    python preprocessing/inference.py -i path/to/unlabeled_data --save_option --noise-only
    ```
 
-2. As some outputs could still include human voices, run vad on the outputs.
+2. As some outputs could still include human voices, you can use following codes to run vad on the outputs.
    ```bash
    python preprocessing/run_vad.py 
    python preprocessing/filter_voices.py
@@ -71,19 +97,19 @@ We provide code for visualizing clusters of voices using audio embeddings.
    cd ../..
    ```
 
-After you obtain the `cluster_labels.csv`, combine the labels with the original `train.csv` and name it as `train_w_cl.csv`.
+After you obtain the `cluster_labels.csv`, combine the labels with the original `train.csv` and name it as `train_w_cl.csv` and put it below your data directory. (This is also provided in the `custom_data` directory.) **Note that the cluster with least fake classes should be cluster number 2.**
 
 
 ## Training
 
 ### Data path
 Set data paths as below:
-- train data
-- noise data
-- train_cluster data
+- train data: Set variable `CUSTOM_DATASET_PATH` in `train_models.py:L224` to path to the data directory that contains `train` folder and `train.csv` 
+- noise data: Set `data.noise_path` in your `config.yaml` as path to noise data which contains list of noises.
+- cluster labels: Make sure `train_w_cl.csv` is below your data directory.
 
 ### Run
-You can use `train_models.py` and configs in `configs/*.yaml`. Here we provide training scripts for 2 best models.
+You can use `train_models.py` and configs in `configs/*.yaml` (or `config.yaml`). Here we provide training scripts for 2 best models. Make sure you set correct paths in `noise_path` within the config file.
 
 ```bash
 python train_models.py --config configs/WavLM.yaml
@@ -92,49 +118,26 @@ python train_models.py --config configs/AASIST.yaml
 
 ## Test
 
-For running inference, we have several preprocessing steps for better results. If you would like to skip this and directly reproduce the results, see [Guidlines for Reproducing Private Score](###guidelines-for-reproducing-private-score).
+For running inference, we have several preprocessing steps for better results. **If you would like to skip this and directly reproduce the results**, see [Guidlines for Reproducing Private Score](#guidelines-for-reproducing-private-score).
 
 ### Preprocessing (Noise removal)
+- This produces the preprocessed test data which is in `custom_data/test_cleaned`. 
    ```bash
-    python preprocessing/inference.py -i path/to/test_data --save_option --vocal-only
+    python preprocessing/separate_noise.py -i path/to/test_data -o custom_data/test_cleaned --save_option vocal-only
    ```
 
 ### Inference
-Before you run inference, set the checkpoint path of model config to ... We provide inference scripts of best models as examples.
+Before you run inference, make sure you set the checkpoint path in the model config. We provide inference scripts of best models as examples.
 
 ```bash
-python inference.py --config configs/AASIST.yaml --mode vr
-python inference.py --config configs/WavLM.yaml --mode raw
+python inference.py --config configs/AASIST_best.yaml --mode vr
+python inference.py --config configs/WavLM_best.yaml --mode raw
 ```
 ### Ensemble
-After obtaining inference csv files, we enxembl  
-
-## Results
-
-### Guidlines for Reproducing Private Score
-This part describes directly reproducing private score.
-Download 2 checkpoints and set the path to AASIST_best.yaml and WavLM_best.yaml.
-
-1. For AASIST, run:
-   ```bash
-   python inference.py --config configs/AASIST_best.yaml --mode vr
-   ```
-2. For WavLM, run:
-   ```bash
-   python inference.py --config configs/WavLM_best.yaml --mode raw
-   ```
-3. You will see 2 submission files created. Ensemble them by:
-   ```bash
-   python ensemble.py path_to_csv_file1 path_to_csv_file2
-   ```
-4. You will see 1 ensembled csv file created. Post-process the result using VAD:
-   ```bash
-   python rewrite.py path_to_csv_file preprocessing/example/vad.csv path_to_output_file.csv
-   ```
-5. Finally, ensemble result from 3 and 4:
-   ```bash
-   python ensemble.py csv_after_step3.csv csv_after_step4.csv
-   ```
+After obtaining inference csv files, you can ensemble results by:
+```bash
+python ensemble.py path_to_csv_file1 path_to_csv_file2
+``` 
 
 
 ## Acknowledgments

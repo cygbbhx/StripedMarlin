@@ -112,9 +112,7 @@ def run_inference(
             y_pred = torch.concat([y_pred, batch_pred], dim=0)
             
     
-    if data_path == "/home/work/StripedMarlin/sohyun/separate_voice/test_processed":
-        data_name = 'mossformer'
-    elif data_path == "/home/work/StripedMarlin/sohyun/test_cleaned":
+    if data_path == "/home/work/StripedMarlin/sohyun/test_cleaned":
         data_name = 'vocal_remover'
     elif data_path == "/home/work/StripedMarlin/sohyun/noise_reducer":
         data_name = "noise_reducer"
@@ -175,20 +173,14 @@ def parse_args():
         default=default_model_config,
     )
     
-    parser.add_argument("--mode", type=str, choices=["eval", "raw", "vr", "vc", "unlabeled"], required=True, help="Mode to run: eval, raw, vr, vc, unlabeled")
+    parser.add_argument("--mode", type=str, choices=["raw", "vr"], required=True, help="Mode to run: eval, raw, vr, vc, unlabeled")
 
     args = parser.parse_args()
 
-    if args.mode == "eval":
-        DATA_PATH = "/home/work/StripedMarlin/eval_data"
-    elif args.mode == "raw":
-        DATA_PATH = "/home/work/StripedMarlin/contest_data"
+    if args.mode == "raw":
+        DATA_PATH = "data/"
     elif args.mode == "vr":
-        DATA_PATH = "/home/work/StripedMarlin/sohyun/test_cleaned"
-    elif args.mode == "vc":
-        DATA_PATH = "/home/work/StripedMarlin/sohyun/generate_spoof"
-    elif args.mode == "unlabeled":
-        DATA_PATH = "/home/work/StripedMarlin/contest_data/unlabeled"
+        DATA_PATH = "custom_data/test_cleaned"
     else:
         raise ValueError("Invalid mode selected.")
 

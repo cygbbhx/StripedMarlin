@@ -7,7 +7,7 @@ import argparse
 # Set up argument parser
 parser = argparse.ArgumentParser(description='Rewrite CSV based on vad.csv reference.')
 parser.add_argument('prev_file', type=str, help='Path to the previous CSV file')
-parser.add_argument('vad_file', type=str, help='Path to the vad.csv file')
+parser.add_argument('vad_file', type=str, help='Path to the vad.csv file', default='custom_data/vad.csv')
 parser.add_argument('out_file', type=str, help='Path to the output CSV file')
 args = parser.parse_args()
 
