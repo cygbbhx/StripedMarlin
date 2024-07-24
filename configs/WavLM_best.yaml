@@ -1,0 +1,36 @@
+checkpoint:
+  path: ckpts/WavLM_0001_tr8997_ts0034.pth
+data:
+  adversarial_attacks:
+  - FGSM
+  - FGSM
+  duration: 5
+  noise_path: custom_data/combined/*.wav
+  sample_rate: 16000
+  seed: 42
+  use_bg: false
+  use_lowpass: false
+  use_rir: false
+logging:
+  description: ''
+  existing_experiment_id: ''
+  log_metrics: true
+  name: Initial adversarial training
+  tags:
+  - adversarial_training
+model:
+  loss:
+    alpha: 0.25
+    fake_weight: 0.7
+    name: focal
+    sam: true
+    scheduler: true
+    weight_decay: 1e-4
+  name: WavLM
+  optimizer:
+    lr: 0.0001
+  parameters:
+    frontend_algorithm:
+    - mfcc
+    input_channels: 1
+    output_dim: 2
